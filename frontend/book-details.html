@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Book Details - Online Bookstore</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+    <link rel="stylesheet" href="assets/css/books.css">
+</head>
+
+<body>
+    <header>
+        <div class="container">
+            <div class="logo">
+                <a href="index.html">
+                    <img src="assets/images/logo.png" alt="Online Bookstore">
+                    <span>Online Bookstore</span>
+                </a>
+            </div>
+            <nav>
+                <ul>
+                    <li><a href="index.html">Home</a></li>
+                    <li><a href="books.html" class="active">Books</a></li>
+                    <li><a href="cart.html">Cart</a></li>
+                    <li class="auth-section"></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main class="container">
+        <div class="book-details" id="book-details">
+            <div class="loading">Loading book details...</div>
+        </div>
+
+        <div class="reviews-section">
+            <h2>Customer Reviews</h2>
+            <div id="reviews-container">
+                <div class="loading">Loading reviews...</div>
+            </div>
+
+            <div id="review-form-container" class="review-form" style="display: none;">
+                <h3>Write a Review</h3>
+                <form id="review-form">
+                    <div class="form-group">
+                        <label for="rating">Rating</label>
+                        <select id="rating" name="rating" required>
+                            <option value="5">5 Stars</option>
+                            <option value="4">4 Stars</option>
+                            <option value="3">3 Stars</option>
+                            <option value="2">2 Stars</option>
+                            <option value="1">1 Star</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="comment">Your Review</label>
+                        <textarea id="comment" name="comment" rows="4" required></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Submit Review</button>
+                </form>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h3>About Us</h3>
+                    <p>Online Bookstore is dedicated to bringing you the best books at affordable prices.</p>
+                </div>
+                <div class="footer-section">
+                    <h3>Quick Links</h3>
+                    <ul>
+                        <li><a href="index.html">Home</a></li>
+                        <li><a href="books.html">Books</a></li>
+                        <li><a href="cart.html">Cart</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h3>Contact Us</h3>
+                    <p>Email: info@onlinebookstore.com</p>
+                    <p>Phone: (123) 456-7890</p>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2025 Online Bookstore. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="assets/js/api.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script>
+        let currentBookId;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            updateAuthUI();
+            const urlParams = new URLSearchParams(window.location.search);
+            currentBookId = urlParams.get('id');
+
+            if (!currentBookId) {
+                window.location.href = 'books.html';
+                return;
+            }
+
+            loadBookDetails();
+            loadReviews();
+        });
+
+            async function loadBookDetails() {
+                try {
+                    const response = await BooksAPI.getBookById(currentBookId);
+                    const book = response.data;
+
+                    let bookDetailsHTML = `
+                    <div class="book-image">
+                        <img src="https://online-bookstore-gdhy.onrender.com/covers/${book.Title}.jpg" alt="${book.Title}">
+                    </div>
+                    <div class="book-info-detailed">
+                        <h1>${book.Title}</h1>
+                        <div class="book-meta">
+                            <p>By <span id="author-names">Loading authors...</span></p>
+                            <p>Desc: ${book.Desc || 'No description available'}</p>
+                        </div>
+                        <div class="book-price">$${book.Price.toFixed(2)}</div>
+                        <div class="book-description">
+                            ${book.Description || book.Desc || 'No detailed description available'}
+                        </div>
+                        <div class="book-actions">
+                            <button class="btn btn-primary" id="add-to-cart-btn">Add to Cart</button>
+                        </div>
+                    </div>
+                `;
+
+                    document.getElementById('book-details').innerHTML = bookDetailsHTML;
+
+                    if (Array.isArray(book.Authors_IDs) && book.Authors_IDs.length > 0) {
+                        try {
+                            const authorPromises = book.Authors_IDs.map(authorId =>
+                                AuthorsAPI.getAuthorById(authorId)
+                            );
+                            const authorResponses = await Promise.all(authorPromises);
+                            const authorNames = authorResponses
+                                .map(response => response.data.Name)
+                                .join(', ');
+
+                            document.getElementById('author-names').textContent = authorNames;
+                        } catch (authorError) {
+                            console.error('Error fetching author details:', authorError);
+                            document.getElementById('author-names').textContent = 'Unknown Author';
+                        }
+                    } else {
+                        document.getElementById('author-names').textContent = 'Unknown Author';
+                    }
+
+                    document.getElementById('add-to-cart-btn').addEventListener('click', handleAddToCart);
+
+                } catch (error) {
+                    console.error('Error loading book details:', error);
+                    document.getElementById('book-details').innerHTML =
+                        '<p class="error">Error loading book details. Please try again later.</p>';
+                }
+            }
+            async function handleAddToCart(event) {
+                try {
+                    const bookId = event.target.getAttribute('data-id');
+
+                    if (!isLoggedIn()) {
+                        showMessage('Please log in to add items to your cart.', 'error');
+                        setTimeout(() => {
+                            window.location.href = 'login.html';
+                        }, 2000);
+                        return;
+                    }
+
+                    // Show loading state
+                    event.target.disabled = true;
+                    event.target.textContent = 'Adding...';
+
+                    const response = await CartAPI.addToCart(bookId);
+
+                    if (response.status === "success") {
+                        showMessage('Book added to cart!', 'success');
+                        updateCartCount();
+                    } else {
+                        throw new Error('Failed to add to cart');
+                    }
+                } catch (error) {
+                    console.error('Error adding to cart:', error);
+                    showMessage('Error adding to cart. Please try again.', 'error');
+                } finally {
+                    // Reset button state
+                    event.target.disabled = false;
+                    event.target.textContent = 'Add to Cart';
+                }
+            }
+
+            async function loadReviews() {
+                try {
+                    const response = await BooksAPI.getBookReviews(currentBookId);               
+                    const reviews = response.data || [];
+                    const reviewsContainer = document.getElementById('reviews-container');
+
+                    if (reviews && reviews.length > 0) {
+                        reviewsContainer.innerHTML = reviews.map(review => {
+                            const userName = review.UserID?.Name || 'Anonymous User';
+
+                            const reviewDate = review.createdAt ?
+                                new Date(review.createdAt).toLocaleDateString() :
+                                'N/A';
+
+                            const stars = '★'.repeat(review.Rating) + '☆'.repeat(5 - review.Rating);
+
+                            return `
+                            <div class="review-card">
+                                <div class="review-header">
+                                    <div class="review-meta">
+                                        <strong>${userName}</strong>
+                                        <span>${reviewDate}</span>
+                                    </div>
+                                    <div class="review-rating">
+                                        ${stars}
+                                    </div>
+                                </div>
+                                <div class="review-content">
+                                    ${review.Review || 'No comment provided'}
+                                </div>
+                            </div>
+                        `;
+                        }).join('');
+                    } else {
+                        reviewsContainer.innerHTML = '<p>No reviews yet. Be the first to review this book!</p>';
+                    }
+
+                    if (isLoggedIn()) {
+                        document.getElementById('review-form-container').style.display = 'block';
+                    }
+
+                } catch (error) {
+                    console.error('Error loading reviews:', error);
+                    document.getElementById('reviews-container').innerHTML =
+                        '<p class="error">Error loading reviews. Please try again later.</p>';
+                }
+            }
+
+            document.getElementById('review-form')?.addEventListener('submit', async (event) => {
+                event.preventDefault();
+
+                if (!isLoggedIn()) {
+                    showMessage('Please log in to submit a review.', 'error');
+                    setTimeout(() => {
+                        window.location.href = 'login.html';
+                    }, 2000);
+                    return;
+                }
+
+                try {
+                    const rating = parseInt(document.getElementById('rating').value);
+                    const comment = document.getElementById('comment').value;
+
+                    const reviewData = {
+                        BookID: currentBookId,
+                        Rating: rating,
+                        Review: comment
+                    };
+
+                    const response = await ReviewsAPI.createReview(reviewData);
+
+                    showMessage('Review submitted successfully!', 'success');
+                    event.target.reset();
+                    await loadReviews(); 
+                } catch (error) {
+                    console.error('Error submitting review:', error);
+                    showMessage('Error submitting review. Please try again.', 'error');
+                }
+            });
+
+        function showMessage(message, type = 'info') {
+            const messageContainer = document.createElement('div');
+            messageContainer.className = `message ${type}`;
+            messageContainer.textContent = message;
+
+            document.body.appendChild(messageContainer);
+
+            setTimeout(() => {
+                messageContainer.classList.add('hide');
+                setTimeout(() => {
+                    document.body.removeChild(messageContainer);
+                }, 500);
+            }, 3000);
+        }
+    </script>
+</body>
+
+</html>

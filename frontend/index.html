@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Online Bookstore - Home</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+</head>
+
+<body>
+    <header>
+        <div class="container">
+            <div class="logo">
+                <a href="index.html">
+                    <img src="assets/images/logo.png" alt="Online Bookstore">
+                    <span>Online Bookstore</span>
+                </a>
+            </div>
+            <nav>
+                <ul>
+                    <li><a href="index.html" class="active">Home</a></li>
+                    <li><a href="books.html">Books</a></li>
+                    <li><a href="cart.html" id="cart-link">Cart</span></a></li>
+                    <li class="auth-section">
+                    </li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <section class="hero">
+        <div class="container">
+            <div class="hero-content">
+                <h1>Discover Your Next Favorite Book</h1>
+                <p>Browse our extensive collection of books from various genres and authors.</p>
+                <a href="books.html" class="btn btn-primary">Browse Books</a>
+            </div>
+        </div>
+    </section>
+
+    <section class="featured-books">
+        <div class="container">
+            <h2>Featured Books</h2>
+            <div class="books-grid" id="featured-books">
+                <div class="loading">Loading featured books...</div>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h3>About Us</h3>
+                    <p>Online Bookstore is dedicated to bringing you the best books at affordable prices.</p>
+                </div>
+                <div class="footer-section">
+                    <h3>Quick Links</h3>
+                    <ul>
+                        <li><a href="index.html">Home</a></li>
+                        <li><a href="books.html">Books</a></li>
+                        <li><a href="cart.html">Cart</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h3>Contact Us</h3>
+                    <p>Email: info@onlinebookstore.com</p>
+                    <p>Phone: (123) 456-7890</p>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script src="assets/js/api.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/books.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            updateAuthUI();
+            loadFeaturedBooks();
+            updateCartCount();
+        });
+
+            async function loadFeaturedBooks() {
+                try {
+                    const featuredBooksContainer = document.getElementById('featured-books');
+                    const response = await BooksAPI.getBooks(1, 4);
+                    const books = response.data;
+                    featuredBooksContainer.innerHTML = '';
+
+                    if (books && books.length > 0) {
+                        featuredBooksContainer.innerHTML = books.map(book => `
+                        <div class="book-card">
+                            <div class="book-cover">
+                                <img src="https://online-bookstore-gdhy.onrender.com/covers/${book.Title}.jpg" alt="${book.Title}">
+                            </div>
+                            <div class="book-info">
+                                <h3>${book.Title}</h3>
+                                <p class="author" id="featured-author-${book._id}">Loading author...</p>
+                                <p class="price">$${book.Price}</p>
+                                <div class="book-actions">
+                                    <a href="book-details.html?id=${book._id}" class="btn btn-secondary">Details</a>
+                                    <button class="btn btn-primary add-to-cart" data-id="${book._id}">Add to Cart</button>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('');
+
+                        document.querySelectorAll('.add-to-cart').forEach(button => {
+                            button.addEventListener('click', handleAddToCart);
+                        });
+
+                        books.forEach(async book => {
+                            try {
+                                if (Array.isArray(book.Authors_IDs) && book.Authors_IDs.length > 0) {
+                                    const authorPromises = book.Authors_IDs.map(authorId =>
+                                        AuthorsAPI.getAuthorById(typeof authorId === 'object' ? authorId._id : authorId)
+                                    );
+
+                                    const authorResponses = await Promise.all(authorPromises);
+                                    const authorNames = authorResponses
+                                        .map(response => response.data.Name)
+                                        .join(', ');
+
+                                    const authorElement = document.getElementById(`featured-author-${book._id}`);
+                                    if (authorElement) {
+                                        authorElement.textContent = `By ${authorNames}`;
+                                    }
+                                } else {
+                                    const authorElement = document.getElementById(`featured-author-${book._id}`);
+                                    if (authorElement) {
+                                        authorElement.textContent = 'By Unknown Author';
+                                    }
+                                }
+                            } catch (authorError) {
+                                console.error('Error fetching author for featured book:', book._id, authorError);
+                                const authorElement = document.getElementById(`featured-author-${book._id}`);
+                                if (authorElement) {
+                                    authorElement.textContent = 'By Unknown Author';
+                                }
+                            }
+                        });
+                    } else {
+                        featuredBooksContainer.innerHTML = '<p>No books found.</p>';
+                    }
+                } catch (error) {
+                    console.error('Error loading featured books:', error);
+                    document.getElementById('featured-books').innerHTML =
+                        '<p class="error">Error loading books. Please try again later.</p>';
+                }
+            }
+        async function handleAddToCart(event) {
+            try {
+                const bookId = event.target.getAttribute('data-id');
+
+                if (!isLoggedIn()) {
+                    showMessage('Please log in to add items to your cart.', 'error');
+                    setTimeout(() => {
+                        window.location.href = 'login.html';
+                    }, 2000);
+                    return;
+                }
+
+                await CartAPI.addToCart(bookId);
+                showMessage('Book added to cart!', 'success');
+
+                updateCartCount();
+            } catch (error) {
+                console.error('Error adding to cart:', error);
+                showMessage('Error adding to cart. Please try again.', 'error');
+            }
+        }
+
+        function showMessage(message, type = 'info') {
+            const messageContainer = document.createElement('div');
+            messageContainer.className = `message ${type}`;
+            messageContainer.textContent = message;
+
+            document.body.appendChild(messageContainer);
+
+            setTimeout(() => {
+                messageContainer.classList.add('hide');
+                setTimeout(() => {
+                    document.body.removeChild(messageContainer);
+                }, 500);
+            }, 3000);
+        }
+    </script>
+</body>
+
+</html>

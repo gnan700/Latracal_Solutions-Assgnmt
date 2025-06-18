@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - Online Bookstore</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="stylesheet" href="../assets/css/admin.css">
+</head>
+
+<body>
+    <div class="admin-container">
+        <aside class="admin-sidebar">
+            <div class="admin-logo">
+                <a href="../index.html">
+                    <img src="../assets/images/logo.png" alt="Online Bookstore">
+                    <span>Bookstore Admin</span>
+                </a>
+                <br><br>
+            </div>
+            <nav class="admin-nav">
+                <ul>
+                    <li><a href="dashboard.html" class="active">
+                            <i class="fas fa-tachometer-alt"></i> Dashboard
+                        </a></li>
+                    <li><a href="books.html">
+                            <i class="fas fa-book"></i> Books
+                        </a></li>
+                    <li><a href="orders.html">
+                            <i class="fas fa-shopping-cart"></i> Orders
+                        </a></li>
+                    <li><a href="users.html">
+                            <i class="fas fa-users"></i> Users
+                        </a></li>
+                    <li><a href="#" id="logout-btn">
+                            <i class="fas fa-sign-out-alt"></i> Logout
+                        </a></li>
+                </ul>
+            </nav>
+        </aside>
+
+        <main class="admin-main">
+            <div class="admin-header">
+                <h1>Dashboard</h1>
+                <div class="admin-user">
+                    <span id="admin-name">Admin Name</span>
+                </div>
+            </div>
+
+            <div class="dashboard-grid">
+                <div class="dashboard-card">
+                    <h3>Total Books</h3>
+                    <div class="number" id="total-books">0</div>
+                </div>
+                <div class="dashboard-card">
+                    <h3>Total Orders</h3>
+                    <div class="number" id="total-orders">0</div>
+                </div>
+                <div class="dashboard-card">
+                    <h3>Total Users</h3>
+                    <div class="number" id="total-users">0</div>
+                </div>
+                <div class="dashboard-card">
+                    <h3>Revenue</h3>
+                    <div class="number" id="total-revenue">$0</div>
+                </div>
+            </div>
+
+            <div class="dashboard-sections">
+                <div class="section">
+                    <h2>Recent Orders</h2>
+                    <div class="data-table">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Order ID</th>
+                                    <th>Customer</th>
+                                    <th>Date</th>
+                                    <th>Amount</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="recent-orders">
+                                <tr>
+                                    <td colspan="5">Loading orders...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h2>Low Stock Books</h2>
+                    <div class="data-table">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Title</th>
+                                    <th>Author</th>
+                                    <th>Stock</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="low-stock-books">
+                                <tr>
+                                    <td colspan="4">Loading books...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="../assets/js/api.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/admin.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            if (!requireAdmin()) {
+                return;
+            }
+
+            loadDashboardData();
+            setupLogout();
+            updateAdminName();
+        });
+
+                        async function loadDashboardData() {
+                            try {
+                                document.getElementById('total-books').textContent = 'Loading...';
+                                document.getElementById('total-orders').textContent = 'Loading...';
+                                document.getElementById('total-users').textContent = 'Loading...';
+                                document.getElementById('total-revenue').textContent = 'Loading...';
+
+                                const [booksResponse, ordersResponse, usersResponse] = await Promise.all([
+                                    BooksAPI.getBooks(1, 100),
+                                    OrdersAPI.getOrders(1, 100),
+                                    AdminAPI.getUsers(1, 100)
+                                ]);
+
+                                const books = booksResponse.data || [];
+                                const orders = ordersResponse.data || [];
+                                const users = usersResponse.data || [];
+                                const totalUsers = users.users.length || usersResponse.data?.length || 0;
+                                
+                                document.getElementById('total-books').textContent = books.length;
+                                document.getElementById('total-orders').textContent = orders.length;
+                                document.getElementById('total-users').textContent = totalUsers;
+
+                                const totalRevenue = orders.reduce((sum, order) => sum + (Number(order.TotalPrice) || 0), 0);
+                                document.getElementById('total-revenue').textContent = formatCurrency(totalRevenue);
+
+                                const recentOrders = orders
+                                    .sort((a, b) => new Date(b._id || 0) - new Date(a._id || 0))
+                                    .slice(0, 5);
+
+                                const recentOrdersHTML = recentOrders.map(order => {
+                                    const userName = order.User_ID?.Name || 'Unknown User';
+
+                                    const totalPrice = order.TotalPrice || 0;
+
+                                    const orderDate = order._id ? new Date(parseInt(order._id.substring(0, 8), 16) * 1000) : null;
+
+                                    return `
+                                    <tr>
+                                        <td>${order._id}</td>
+                                        <td>${userName}</td>
+                                        <td>${formatDate(orderDate)}</td>
+                                        <td>${formatCurrency(totalPrice)}</td>
+                                        <td>
+                                            <span class="status-badge ${(order.Status || 'pending').toLowerCase()}">
+                                                ${order.Status || 'Pending'}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                `;
+                                }).join('');
+
+                                document.getElementById('recent-orders').innerHTML = recentOrdersHTML;
+
+                                const lowStockBooks = books
+                                    .filter(book => (Number(book.Stock) || 0) < 10)
+                                    .slice(0, 5);
+
+                                const lowStockHTML = lowStockBooks.map(book => {
+                                    let authorNames = 'Unknown Author';
+                                    if (book.Authors_IDs && Array.isArray(book.Authors_IDs)) {
+                                        authorNames = book.Authors_IDs.map(authorId => {
+                                            if (typeof authorId === 'object' && authorId.Name) {
+                                                return authorId.Name;
+                                            }
+                                            return 'Unknown Author';
+                                        }).join(', ');
+                                    }
+
+                                    return `
+                                    <tr>
+                                        <td>${book.Title || 'Untitled'}</td>
+                                        <td>${authorNames}</td>
+                                        <td>
+                                            <span class="stock-badge ${(Number(book.Stock) || 0) < 5 ? 'critical' : 'warning'}">
+                                                ${book.Stock || 0}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <button class="btn btn-secondary btn-sm" 
+                                                    onclick="updateStock('${book._id}')">
+                                                Update Stock
+                                            </button>
+                                        </td>
+                                    </tr>
+                                `;
+                                }).join('');
+
+                                document.getElementById('low-stock-books').innerHTML =
+                                    lowStockHTML || '<tr><td colspan="4">No low stock books</td></tr>';
+
+                            } catch (error) {
+                                console.error('Error loading dashboard data:', error);
+                                showMessage('Error loading dashboard data', 'error');
+
+                                document.getElementById('total-books').textContent = 'Error';
+                                document.getElementById('total-orders').textContent = 'Error';
+                                document.getElementById('total-users').textContent = 'Error';
+                                document.getElementById('total-revenue').textContent = 'Error';
+
+                                document.getElementById('recent-orders').innerHTML =
+                                    '<tr><td colspan="5">Error loading orders</td></tr>';
+                                document.getElementById('low-stock-books').innerHTML =
+                                    '<tr><td colspan="4">Error loading books</td></tr>';
+                            }
+                        }
+
+                        function formatDate(date) {
+                            if (!date || !(date instanceof Date) || isNaN(date)) return 'N/A';
+
+                            return date.toLocaleDateString('en-US', {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                            });
+                        }
+
+                        function formatCurrency(amount) {
+                            return new Intl.NumberFormat('en-US', {
+                                style: 'currency',
+                                currency: 'USD',
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2
+                            }).format(amount || 0);
+                        }
+                    function formatDate(dateString) {
+                        if (!dateString) return 'N/A';
+                        try {
+                            const date = new Date(dateString);
+                            if (isNaN(date.getTime())) return 'N/A';
+
+                            return date.toLocaleDateString('en-US', {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                            });
+                        } catch (error) {
+                            console.error('Error formatting date:', error);
+                            return 'N/A';
+                        }
+                    }
+
+                function formatCurrency(amount) {
+                    if (!amount || isNaN(amount)) return '$0.00';
+                    return new Intl.NumberFormat('en-US', {
+                        style: 'currency',
+                        currency: 'USD'
+                    }).format(amount);
+                }
+            async function updateStock(bookId) {
+                try {
+                    const newStock = prompt('Enter new stock quantity:');
+                    if (newStock === null) return;
+
+                    const quantity = parseInt(newStock);
+                    if (isNaN(quantity) || quantity < 0) {
+                        showMessage('Please enter a valid number', 'error');
+                        return;
+                    }
+
+                    await BooksAPI.updateBook(bookId, { Stock: quantity });
+                    showMessage('Stock updated successfully', 'success');
+                    loadDashboardData();
+                } catch (error) {
+                    console.error('Error updating stock:', error);
+                    showMessage('Error updating stock', 'error');
+                }
+            }
+
+            function updateAdminName() {
+                const user = JSON.parse(localStorage.getItem('user'));
+                if (user) {
+                    document.getElementById('admin-name').textContent = user.Name;
+                }
+            }
+
+        function setupLogout() {
+            document.getElementById('logout-btn').addEventListener('click', (e) => {
+                e.preventDefault();
+                dashboardLogout();
+            });
+        }
+
+        function showMessage(message, type = 'info') {
+            const messageContainer = document.createElement('div');
+            messageContainer.className = `message ${type}`;
+            messageContainer.textContent = message;
+
+            document.body.appendChild(messageContainer);
+
+            setTimeout(() => {
+                messageContainer.classList.add('hide');
+                setTimeout(() => {
+                    document.body.removeChild(messageContainer);
+                }, 500);
+            }, 3000);
+        }
+    </script>
+</body>
+
+</html>

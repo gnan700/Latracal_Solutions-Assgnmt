@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Books - Admin Dashboard</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="stylesheet" href="../assets/css/admin.css">
+</head>
+
+<body>
+    <div class="admin-container">
+        <aside class="admin-sidebar">
+            <div class="admin-logo">
+                <a href="../index.html">
+                    <img src="../assets/images/logo.png" alt="Online Bookstore">
+                    <span>Bookstore Admin</span>
+                </a>
+            </div>
+            <nav class="admin-nav">
+                <ul>
+                    <li><a href="dashboard.html">
+                            <i class="fas fa-tachometer-alt"></i> Dashboard
+                        </a></li>
+                    <li><a href="books.html" class="active">
+                            <i class="fas fa-book"></i> Books
+                        </a></li>
+                    <li><a href="orders.html">
+                            <i class="fas fa-shopping-cart"></i> Orders
+                        </a></li>
+                    <li><a href="users.html">
+                            <i class="fas fa-users"></i> Users
+                        </a></li>
+                    <li><a href="#" id="logout-btn">
+                            <i class="fas fa-sign-out-alt"></i> Logout
+                        </a></li>
+                </ul>
+            </nav>
+        </aside>
+
+        <main class="admin-main">
+            <div class="admin-header">
+                <h1>Manage Books</h1>
+                <button class="btn btn-primary" id="add-book-btn">
+                    <i class="fas fa-plus"></i> Add New Book
+                </button>
+            </div>
+
+            <div class="admin-filters">
+                <div class="filter-group">
+                    <input type="text" id="search-input" placeholder="Search books...">
+                </div>
+            </div>
+
+            <div class="data-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Image</th>
+                            <th>Title</th>
+                            <th>Author</th>
+                            <th>Price</th>
+                            <th>Stock</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="books-table-body">
+                        <tr>
+                            <td colspan="7">Loading books...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="pagination" id="pagination">
+            </div>
+        </main>
+    </div>
+
+    <div class="modal" id="book-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-title">Add New Book</h2>
+                <button class="close-btn">&times;</button>
+            </div>
+            <form id="book-form" class="admin-form">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="title">Title</label>
+                        <input type="text" id="title" name="Title" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="author">Author</label>
+                        <input type="text" id="author" name="Author" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="price">Price</label>
+                        <input type="number" id="price" name="Price" step="0.01" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="stock">Stock</label>
+                        <input type="number" id="stock" name="Stock" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="description">Description</label>
+                    <textarea id="description" name="Description" rows="4" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="image">Book Cover Image</label>
+                    <input type="file" id="image" name="Image" accept="image/*">
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Save Book</button>
+                    <button type="button" class="btn btn-secondary" id="cancel-btn">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="../assets/js/api.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/admin.js"></script>
+    <script>
+        let currentPage = 1;
+        let totalPages = 1;
+        let editingBookId = null;
+        let allBooks = [];
+
+        document.addEventListener('DOMContentLoaded', () => {
+            if (!requireAdmin()) {
+                return;
+            }
+
+            loadBooks();
+            setupEventListeners();
+        });
+
+        function setupEventListeners() {
+            document.getElementById('add-book-btn').addEventListener('click', () => {
+                openBookModal();
+            });
+
+            const searchInput = document.getElementById('search-input');
+            if (searchInput) {
+                searchInput.addEventListener('input', debounce(async (e) => {
+                    const searchTerm = e.target.value.toLowerCase();
+                    const filteredBooks = allBooks.filter(book =>
+                        book.Title.toLowerCase().includes(searchTerm)
+                    );
+                    renderBooks(filteredBooks);
+                }, 300));
+            }
+
+            const bookForm = document.getElementById('book-form');
+            if (bookForm) {
+                bookForm.addEventListener('submit', handleBookSubmit);
+            }
+
+            const closeBtn = document.querySelector('.close-btn');
+            const cancelBtn = document.getElementById('cancel-btn');
+            if (closeBtn) closeBtn.addEventListener('click', closeBookModal);
+            if (cancelBtn) cancelBtn.addEventListener('click', closeBookModal);
+
+            const imageInput = document.getElementById('image');
+            if (imageInput) {
+                imageInput.addEventListener('change', handleImagePreview);
+            }
+
+            const logoutBtn = document.getElementById('logout-btn');
+            if (logoutBtn) {
+                logoutBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    dashboardLogout();
+                });
+            }
+        }
+
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+
+            async function renderBooks(books) {
+                const tableBody = document.getElementById('books-table-body');
+                console.log('Rendering books:', books);
+
+                if (!books || books.length === 0) {
+                    tableBody.innerHTML = '<tr><td colspan="7">No books found</td></tr>';
+                    return;
+                }
+
+                try {
+                    let booksHTML = '';
+
+                    for (const book of books) {
+                        let authorNames = 'Unknown Author';
+
+                        if (Array.isArray(book.Authors_IDs) && book.Authors_IDs.length > 0) {
+                            try {
+                                const authorPromises = book.Authors_IDs.map(authorId => AuthorsAPI.getAuthorById(authorId));
+                                const authorResponses = await Promise.all(authorPromises);
+                                authorNames = authorResponses.map(response => response.data.Name).join(', ');
+                            } catch (authorError) {
+                                console.error('Error fetching author details:', authorError);
+                            }
+                        }
+
+                        booksHTML += `
+                        <tr>
+                            <td>
+                                <img src="https://online-bookstore-gdhy.onrender.com/covers/${book.Title}.jpg" alt="${book.Title}" class="book-thumbnail">
+                            </td>
+                            <td>${book.Title || 'No Title'}</td>
+                            <td>${authorNames}</td>
+                            <td>$${(book.Price || 0).toFixed(2)}</td>
+                            <td>${book.Stock || 0}</td>
+                            <td class="action-buttons">
+                                <button class="btn btn-sm btn-secondary edit-book-btn" data-id="${book._id}">
+                                    <i class="fas fa-edit"></i> Edit
+                                </button>
+                                <button class="btn btn-sm btn-danger delete-book-btn" data-id="${book._id}">
+                                    <i class="fas fa-trash"></i> Delete
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                    }
+
+                    tableBody.innerHTML = booksHTML;
+
+                    document.querySelectorAll('.edit-book-btn').forEach(button => {
+                        button.addEventListener('click', (e) => {
+                            e.preventDefault();
+                            const bookId = button.getAttribute('data-id');
+                            editBook(bookId);
+                        });
+                    });
+
+                    document.querySelectorAll('.delete-book-btn').forEach(button => {
+                        button.addEventListener('click', (e) => {
+                            e.preventDefault();
+                            const bookId = button.getAttribute('data-id');
+                            deleteBook(bookId);
+                        });
+                    });
+
+                } catch (error) {
+                    console.error('Error rendering books:', error);
+                    tableBody.innerHTML = '<tr><td colspan="7">Error rendering books</td></tr>';
+                }
+            }
+
+        async function handleBookSubmit(event) {
+            event.preventDefault();
+
+            try {
+                const formData = new FormData(event.target);
+
+                if (editingBookId) {
+                    await BooksAPI.updateBook(editingBookId, formData);
+                    showMessage('Book updated successfully', 'success');
+                } else {
+                    await BooksAPI.createBook(formData);
+                    showMessage('Book created successfully', 'success');
+                }
+
+                closeBookModal();
+                loadBooks();
+            } catch (error) {
+                console.error('Error saving book:', error);
+                showMessage('Error saving book', 'error');
+            }
+        }
+
+        async function loadBooks() {
+                try {
+                    const tableBody = document.getElementById('books-table-body');
+                    tableBody.innerHTML = '<tr><td colspan="7">Loading books...</td></tr>';
+
+                    const response = await BooksAPI.getBooks(1, 100);                   
+                    if (!response || !response.data) {
+                        throw new Error('Invalid response from server');
+                    }
+
+                    allBooks = Array.isArray(response.data) ? response.data : [];
+                    if (allBooks.length === 0) {
+                        tableBody.innerHTML = '<tr><td colspan="7">No books available</td></tr>';
+                        return;
+                    }
+
+                    renderBooks(allBooks);
+                } catch (error) {
+                    console.error('Error loading books:', error);
+                    const tableBody = document.getElementById('books-table-body');
+                    tableBody.innerHTML = '<tr><td colspan="7">Error loading books. Please try again later.</td></tr>';
+                    showMessage('Error loading books', 'error');
+                }
+            }
+        
+        async function editBook(bookId) {
+            try {
+                const response = await BooksAPI.getBookById(bookId);
+                const book = response.data;
+
+                editingBookId = bookId;
+                openBookModal(book);
+            } catch (error) {
+                console.error('Error loading book details:', error);
+                showMessage('Error loading book details', 'error');
+            }
+        }
+
+        async function deleteBook(bookId) {
+            if (confirm('Are you sure you want to delete this book?')) {
+                try {
+                    await BooksAPI.deleteBook(bookId);
+                    showMessage('Book deleted successfully', 'success');
+                    loadBooks();
+                } catch (error) {
+                    console.error('Error deleting book:', error);
+                    showMessage('Error deleting book', 'error');
+                }
+            }
+        }
+
+        function openBookModal(book = null) {
+            const modal = document.getElementById('book-modal');
+            const form = document.getElementById('book-form');
+            const modalTitle = document.getElementById('modal-title');
+
+            modalTitle.textContent = book ? 'Edit Book' : 'Add New Book';
+            form.reset();
+
+            if (book) {
+                Object.keys(book).forEach(key => {
+                    const input = form.elements[key];
+                    if (input) {
+                        input.value = book[key];
+                    }
+                });
+
+                const imagePreview = document.getElementById('image-preview');
+                imagePreview.innerHTML = `
+                        <img src="https://online-bookstore-gdhy.onrender.com//covers/${book.Title}.jpg">
+                    `;
+            }
+
+            modal.style.display = 'block';
+        }
+
+        function closeBookModal() {
+            const modal = document.getElementById('book-modal');
+            modal.style.display = 'none';
+            editingBookId = null;
+        }
+
+        function handleImagePreview(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    const imagePreview = document.getElementById('image-preview');
+                    imagePreview.innerHTML = `
+                            <img src="${e.target.result}" alt="Preview">
+                        `;
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function showMessage(message, type = 'info') {
+            const messageContainer = document.createElement('div');
+            messageContainer.className = `message ${type}`;
+            messageContainer.textContent = message;
+
+            document.body.appendChild(messageContainer);
+
+            setTimeout(() => {
+                messageContainer.classList.add('hide');
+                setTimeout(() => {
+                    document.body.removeChild(messageContainer);
+                }, 500);
+            }, 3000);
+        }
+    </script>
+</body>
+
+</html>

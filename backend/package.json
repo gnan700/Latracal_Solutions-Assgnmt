@@ -1,0 +1,41 @@
+{
+  "name": "onlinebookstore",
+  "version": "1.0.0",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ahmeedusamaa/Online-Bookstore.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ahmeedusamaa/Online-Bookstore/issues"
+  },
+  "homepage": "https://github.com/ahmeedusamaa/Online-Bookstore#readme",
+  "description": "An advanced e-commerce platform for book shopping, built using Express.js. This project allows users to browse books, manage their cart, place orders, and leave reviews.",
+  "dependencies": {
+    "bcrypt": "^5.1.1",
+    "bcryptjs": "^3.0.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-validator": "^7.2.1",
+    "jsonwebtoken": "^9.0.2",
+    "mongodb": "^6.14.0",
+    "mongoose": "^8.11.0",
+    "multer": "^1.4.5-lts.1",
+    "nodemailer": "^6.10.0",
+    "nodemon": "^3.1.9",
+    "winston": "^3.17.0"
+  },
+  "directories": {
+    "doc": "docs"
+  },
+  "keywords": []
+}

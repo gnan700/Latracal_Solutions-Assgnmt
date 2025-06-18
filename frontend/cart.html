@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shopping Cart - Online Bookstore</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+    <link rel="stylesheet" href="assets/css/cart.css">
+</head>
+
+<body>
+    <header>
+        <div class="container">
+            <div class="logo">
+                <a href="index.html">
+                    <img src="assets/images/logo.png" alt="Online Bookstore">
+                    <span>Online Bookstore</span>
+                </a>
+            </div>
+            <nav>
+                <ul>
+                    <li><a href="index.html">Home</a></li>
+                    <li><a href="books.html">Books</a></li>
+                    <li><a href="cart.html" class="active">Cart <span id="cart-count">(0)</span></a></li>
+                    <li class="auth-section"></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main class="cart-container container">
+        <h1>Shopping Cart</h1>
+        <div class="cart-grid" id="cart-grid" style="display: none;">
+            <div class="cart-items" id="cart-items"></div>
+            <div class="cart-summary">
+                <h3>Order Summary</h3>
+                <div class="summary-item">
+                    <span>Subtotal:</span>
+                    <span id="subtotal">$0.00</span>
+                </div>
+                <div class="summary-item">
+                    <span>Shipping:</span>
+                    <span id="shipping">$0.00</span>
+                </div>
+                <div class="summary-item summary-total">
+                    <span>Total:</span>
+                    <span id="total">$0.00</span>
+                </div>
+                <button class="btn btn-primary btn-block" id="checkout-btn">Proceed to Checkout</button>
+            </div>
+        </div>
+        <div id="empty-cart" style="display: none;" class="cart-empty">
+            <h2>Your cart is empty</h2>
+            <p>Browse our collection and add some books to your cart!</p>
+            <a href="books.html" class="btn btn-primary">Browse Books</a>
+        </div>
+    </main>
+
+    <footer>
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h3>About Us</h3>
+                    <p>Online Bookstore is dedicated to bringing you the best books at affordable prices.</p>
+                </div>
+                <div class="footer-section">
+                    <h3>Quick Links</h3>
+                    <ul>
+                        <li><a href="index.html">Home</a></li>
+                        <li><a href="books.html">Books</a></li>
+                        <li><a href="cart.html">Cart</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h3>Contact Us</h3>
+                    <p>Email: info@onlinebookstore.com</p>
+                    <p>Phone: (123) 456-7890</p>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script src="assets/js/api.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script>
+        let cartItems = [];
+        const SHIPPING_COST = 5.00;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            updateAuthUI();
+            if (!isLoggedIn()) {
+                window.location.href = 'login.html';
+                return;
+            }
+            loadCart();
+        });
+
+        async function loadCart() {
+            try {
+                const response = await CartAPI.getCart();
+                if (response && response.data) {
+                    // Group identical books and count quantities
+                    const groupedCart = response.data.reduce((acc, book) => {
+                        const existingBook = acc.find(item => item._id === book._id);
+                        if (existingBook) {
+                            existingBook.quantity = (existingBook.quantity || 1) + 1;
+                        } else {
+                            book.quantity = 1;
+                            acc.push(book);
+                        }
+                        return acc;
+                    }, []);
+
+                    cartItems = groupedCart;
+                    updateCartDisplay(cartItems);
+                    updateCartCount(response.data.length);
+                } else {
+                    throw new Error('Invalid cart data received');
+                }
+            } catch (error) {
+                console.error('Error loading cart:', error);
+                cartItems = [];
+                updateCartDisplay();
+                updateCartCount(0);
+            }
+        }
+
+        async function updateQuantity(bookId, newQuantity) {
+            try {
+                const currentBook = cartItems.find(item => item._id === bookId);
+                
+                if (newQuantity <= 0) {
+                    await CartAPI.removeFromCart(bookId);
+                    currentBook.quantity--;
+                } else if (newQuantity > currentBook.quantity) {
+                    const response = await CartAPI.addToCart(bookId);
+                    if (response.status === 'success') {
+                        currentBook.quantity++;
+                    }
+                } else if (newQuantity < currentBook.quantity) {
+                    const response = await CartAPI.removeFromCart(bookId);
+                    if (response.status === 'success') {
+                        currentBook.quantity--;
+                    }
+                }
+
+                if (currentBook.quantity <= 0) {
+                    cartItems = cartItems.filter(item => item._id !== bookId);
+                }
+
+                updateCartDisplay(cartItems);
+                updateCartCount(cartItems.reduce((total, item) => total + item.quantity, 0));
+            } catch (error) {
+                console.error('Error updating quantity:', error);
+                alert('Failed to update quantity');
+            }
+        }
+
+        async function removeFromCart(bookId) {
+            try {
+                const book = cartItems.find(item => item._id === bookId);
+                if (!book) return;
+
+                for (let i = 0; i < book.quantity; i++) {
+                    await CartAPI.removeFromCart(bookId);
+                }
+
+                cartItems = cartItems.filter(item => item._id !== bookId);
+                updateCartDisplay(cartItems);
+                updateCartCount(cartItems.reduce((total, item) => total + item.quantity, 0));
+            } catch (error) {
+                console.error('Error removing item from cart:', error);
+                alert('Failed to remove item from cart');
+            }
+        }
+
+        async function updateCartDisplay(cartItems) {
+            const cartGrid = document.getElementById('cart-grid');
+            const emptyCart = document.getElementById('empty-cart');
+            const cartItemsContainer = document.getElementById('cart-items');
+
+            if (!cartItems || cartItems.length === 0) {
+                cartGrid.style.display = 'none';
+                emptyCart.style.display = 'block';
+                return;
+            }
+
+            cartGrid.style.display = 'grid';
+            emptyCart.style.display = 'none';
+            cartItemsContainer.innerHTML = '';
+
+            for (const item of cartItems) {
+                const book = item;
+                let authorNames = 'Unknown Author';
+
+                if (Array.isArray(book.Authors_IDs) && book.Authors_IDs.length > 0) {
+                    try {
+                        const authorPromises = book.Authors_IDs.map(authorId =>
+                            AuthorsAPI.getAuthorById(authorId)
+                        );
+                        const authorResponses = await Promise.all(authorPromises);
+                        authorNames = authorResponses.map(response => response.data.Name).join(', ');
+                    } catch (authorError) {
+                        console.error('Error fetching author details:', authorError);
+                    }
+                }
+
+                const bookElement = document.createElement('div');
+                bookElement.classList.add('cart-item');
+                bookElement.dataset.id = book._id;
+                bookElement.innerHTML = `
+                    <div class="cart-item-image">
+                        <img src="https://online-bookstore-gdhy.onrender.com/covers/${book.Title}.jpg" alt="${book.Title}">
+                    </div>
+                    <div class="cart-item-details">
+                        <h3>${book.Title}</h3>
+                        <p class="author">By ${authorNames}</p>
+                        <p class="price">$${book.Price ? book.Price.toFixed(2) : '0.00'}</p>
+                    </div>
+                    <div class="cart-item-quantity">
+                        <button class="quantity-btn minus-btn" onclick="updateQuantity('${book._id}', ${book.quantity - 1})">-</button>
+                        <span>${book.quantity}</span>
+                        <button class="quantity-btn plus-btn" onclick="updateQuantity('${book._id}', ${book.quantity + 1})">+</button>
+                    </div>
+                    <div class="cart-item-price">
+                        $${book.Price ? (book.Price * book.quantity).toFixed(2) : '0.00'}
+                    </div>
+                    <button class="remove-item" onclick="removeFromCart('${book._id}')">×</button>
+                `;
+
+                cartItemsContainer.appendChild(bookElement);
+            }
+
+            updateOrderSummary();
+        }
+
+        function updateOrderSummary() {
+            const subtotalElement = document.getElementById('subtotal');
+            const shippingElement = document.getElementById('shipping');
+            const totalElement = document.getElementById('total');
+
+            if (!subtotalElement || !shippingElement || !totalElement) {
+                console.error("Error: Order summary elements not found.");
+                return;
+            }
+
+            const subtotal = cartItems.reduce((total, item) => {
+                return total + (item.Price ? item.Price * item.quantity : 0);
+            }, 0);
+
+            const total = subtotal + SHIPPING_COST;
+
+            subtotalElement.textContent = `$${subtotal.toFixed(2)}`;
+            shippingElement.textContent = `$${SHIPPING_COST.toFixed(2)}`;
+            totalElement.textContent = `$${total.toFixed(2)}`;
+        }
+
+        function updateCartCount(cartCount) {
+            document.getElementById('cart-count').textContent = `(${cartCount || 0})`;
+        }
+
+        async function handleCheckout() {
+            try {
+                if (!cartItems || cartItems.length === 0) {
+                    alert('Your cart is empty!');
+                    return;
+                }
+
+                if (!isLoggedIn()) {
+                    alert('Please log in to proceed with checkout');
+                    window.location.href = 'login.html';
+                    return;
+                }
+
+                const checkoutBtn = document.getElementById('checkout-btn');
+                checkoutBtn.disabled = true;
+                checkoutBtn.textContent = 'Processing...';
+
+                const user = JSON.parse(localStorage.getItem("user"));
+                if (!user || !user.id) {
+                    throw new Error('User data not found');
+                }
+
+                const totalPrice = cartItems.reduce((total, item) => {
+                    return total + (item.Price ? item.Price * item.quantity : 0);
+                }, 0) + SHIPPING_COST;
+
+                const expandedBooks = cartItems.reduce((acc, item) => {
+                    const bookIds = Array(item.quantity).fill(item._id);
+                    return [...acc, ...bookIds];
+                }, []);
+
+                const orderData = {
+                    User_ID: user.id,
+                    Books: expandedBooks,
+                    TotalPrice: totalPrice
+                };
+
+                const response = await OrdersAPI.createOrder(orderData);
+
+                if (response.status === 'success') {
+
+                    for (const item of cartItems) {
+                        await removeFromCart(item._id);
+                    }
+                    alert('Order placed successfully!');
+                    window.location.href = 'index.html';
+                }
+
+            } catch (error) {
+                console.error('Error creating order:', error);
+                alert('Failed to place order. Please try again.');
+            } finally {
+                const checkoutBtn = document.getElementById('checkout-btn');
+                checkoutBtn.disabled = false;
+                checkoutBtn.textContent = 'Proceed to Checkout';
+            }
+        }
+
+        document.getElementById('checkout-btn').addEventListener('click', handleCheckout);
+    </script>
+</body>
+
+</html>

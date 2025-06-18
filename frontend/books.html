@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Books - Online Bookstore</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+    <link rel="stylesheet" href="assets/css/books.css">
+</head>
+
+<body>
+    <header>
+        <div class="container">
+            <div class="logo">
+                <a href="index.html">
+                    <img src="assets/images/logo.png" alt="Online Bookstore">
+                    <span>Online Bookstore</span>
+                </a>
+            </div>
+            <nav>
+                <ul>
+                    <li><a href="index.html">Home</a></li>
+                    <li><a href="books.html" class="active">Books</a></li>
+                    <li><a href="cart.html">Cart </a></li>
+                    <li class="auth-section"></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main class="container books-container">
+        <div class="books-header">
+            <h1>Browse Books</h1>
+        </div>
+
+        <div class="books-filters">
+            <div class="filter-group">
+                <div class="filter-item">
+                    <label for="search">Search</label>
+                    <input type="text" id="search" placeholder="Search books...">
+                </div>
+            </div>
+        </div>
+
+        <div class="books-grid" id="books-grid">
+            <div class="loading">Loading books...</div>
+        </div>
+
+        <div class="pagination" id="pagination">
+        </div>
+    </main>
+
+    <footer>
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h3>About Us</h3>
+                    <p>Online Bookstore is dedicated to bringing you the best books at affordable prices.</p>
+                </div>
+                <div class="footer-section">
+                    <h3>Quick Links</h3>
+                    <ul>
+                        <li><a href="index.html">Home</a></li>
+                        <li><a href="books.html">Books</a></li>
+                        <li><a href="cart.html">Cart</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h3>Contact Us</h3>
+                    <p>Email: info@onlinebookstore.com</p>
+                    <p>Phone: (123) 456-7890</p>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script src="assets/js/api.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/books.js"></script>
+    <script>
+        let currentPage = 1;
+        let totalPages = 1;
+        let allBooks = []; 
+
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            updateAuthUI();
+            loadInitialBooks();
+            setupFilters();
+        });
+
+        async function loadInitialBooks() {
+            try {
+                const response = await BooksAPI.getBooks(1, 100);
+                allBooks = response.data;
+                renderBooks(allBooks);
+            } catch (error) {
+                console.error('Error loading initial books:', error);
+                document.getElementById('books-grid').innerHTML =
+                    '<p class="error">Error loading books. Please try again later.</p>';
+            }
+        }
+
+        function setupFilters() {
+            const searchInput = document.getElementById('search');
+
+            searchInput.addEventListener('input', debounce(async (e) => {
+                const searchTerm = e.target.value.toLowerCase();
+
+                const filteredBooks = allBooks.filter(book =>
+                    book.Title.toLowerCase().includes(searchTerm)
+                );
+
+                renderBooks(filteredBooks);
+            }, 300));
+        }
+
+        async function renderBooks(books) {
+            const booksGrid = document.getElementById('books-grid');
+
+            if (!books || books.length === 0) {
+                booksGrid.innerHTML = '<p>No books found matching your search.</p>';
+                return;
+            }
+
+            booksGrid.innerHTML = books.map(book => `
+                <div class="book-card" id="book-${book._id}">
+                    <div class="book-cover">
+                        <img src="https://online-bookstore-gdhy.onrender.com/covers/${book.Title}.jpg" alt="${book.Title}">
+                    </div>
+                    <div class="book-info">
+                        <h3>${book.Title}</h3>
+                        <p class="author" id="author-${book._id}">Loading author...</p>
+                        <p class="price">$${book.Price}</p>
+                        <div class="book-actions">
+                            <a href="book-details.html?id=${book._id}" class="btn btn-secondary">Details</a>
+                            <button class="btn btn-primary add-to-cart" 
+                                    onclick="handleAddToCart(event)" 
+                                    data-id="${book._id}">
+                                Add to Cart
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+
+            books.forEach(async book => {
+                try {
+                    if (Array.isArray(book.Authors_IDs) && book.Authors_IDs.length > 0) {
+                        const authorPromises = book.Authors_IDs.map(authorId =>
+                            AuthorsAPI.getAuthorById(typeof authorId === 'object' ? authorId._id : authorId)
+                        );
+
+                        const authorResponses = await Promise.all(authorPromises);
+                        const authorNames = authorResponses
+                            .map(response => response.data.Name)
+                            .join(', ');
+
+                        const authorElement = document.getElementById(`author-${book._id}`);
+                        if (authorElement) {
+                            authorElement.textContent = `By ${authorNames}`;
+                        }
+                    } else {
+                        const authorElement = document.getElementById(`author-${book._id}`);
+                        if (authorElement) {
+                            authorElement.textContent = 'By Unknown Author';
+                        }
+                    }
+                } catch (authorError) {
+                    console.error('Error fetching author for book:', book._id, authorError);
+                    const authorElement = document.getElementById(`author-${book._id}`);
+                    if (authorElement) {
+                        authorElement.textContent = 'By Unknown Author';
+                    }
+                }
+            });
+        }
+
+        async function handleAddToCart(event) {
+            try {
+                if (!isLoggedIn()) {
+                    showMessage('Please log in to add items to your cart.', 'error');
+                    setTimeout(() => {
+                        window.location.href = 'login.html';
+                    }, 2000);
+                    return;
+                }
+
+                const button = event.target;
+                const bookId = button.getAttribute('data-id');
+
+                button.disabled = true;
+                button.textContent = 'Adding...';
+
+                await CartAPI.addToCart(bookId);
+                showMessage('Book added to cart!', 'success');
+                updateCartCount();
+            } catch (error) {
+                console.error('Error adding to cart:', error);
+                showMessage('Error adding to cart. Please try again.', 'error');
+            } finally {
+                const button = event.target;
+                button.disabled = false;
+                button.textContent = 'Add to Cart';
+            }
+        }
+
+        function showMessage(message, type = 'info') {
+            const messageContainer = document.createElement('div');
+            messageContainer.className = `message ${type}`;
+            messageContainer.textContent = message;
+
+            document.body.appendChild(messageContainer);
+
+            setTimeout(() => {
+                messageContainer.classList.add('hide');
+                setTimeout(() => {
+                    document.body.removeChild(messageContainer);
+                }, 500);
+            }, 3000);
+        }
+    </script>
+</body>
+
+</html>
